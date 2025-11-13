@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nustatymai — Safe AI Bot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='scripts.js') }}" defer></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #0f1112;
+      color: #e9e9e9;
+      margin: 0;
+      padding: 0;
+    }
+
+    .settings-container {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 20px 30px;
+      background: #181a1b;
+      border-radius: 14px;
+      box-shadow: 0 0 25px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 25px;
+      color: #fff;
+      border-bottom: 1px solid #333;
+      padding-bottom: 10px;
+      text-align: center;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px 20px;
+    }
+
+    .section {
+      background: #1d1f21;
+      border: 1px solid #2b2e31;
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section h2 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+      color: #00bcd4;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 12px;
+      align-items: center;
+    }
+
+    .fields label {
+      font-weight: 500;
+      font-size: 0.9rem;
+      position: relative;
+      cursor: help;
+    }
+
+    .fields input,
+    .fields select {
+      width: 110px;
+      background: #25282a;
+      border: 1px solid #3a3d40;
+      border-radius: 5px;
+      color: #fff;
+      padding: 4px 6px;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    /* Tooltip */
+    .fields label[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      top: 120%;
+      background: #202325;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 8px;
+      white-space: normal;
+      width: 280px;
+      font-size: 0.8rem;
+      line-height: 1.3;
+      z-index: 20;
+      box-shadow: 0 0 6px rgba(0,0,0,0.5);
+    }
+
+    .section button {
+      background: #00bfa5;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 10px;
+      margin-top: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      width: fit-content;
+    }
+
+    .section button:hover { background: #009f8d; }
+
+    @media (max-width: 900px) {
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="settings-container">
+    <h1>⚙️ Nustatymai</h1>
+
+    <div class="settings-grid">
+      <!-- Pagrindiniai -->
+      <div class="section">
+        <h2>🧭 Pagrindiniai</h2>
+        <div class="fields">
+          <label data-tip="Pasirinkite veikimo režimą. TEST — bandomasis, be realių pinigų. LIVE — reali prekyba. Keisdami į LIVE botas pradės vykdyti tikras operacijas.">Režimas (TEST/LIVE)</label>
+          <select data-key="MODE">
+            <option value="TEST">TEST</option>
+            <option value="LIVE">LIVE</option>
+          </select>
+
+          <label data-tip="Kai įjungta, botas simuliuoja sandorius neatlikdamas realių pirkimų. Išjungus — vykdoma reali prekyba.">Dry Run</label>
+          <select data-key="DRY_RUN">
+            <option value="true">Įjungta</option>
+            <option value="false">Išjungta</option>
+          </select>
+
+          <label data-tip="Nustato, kiek pozicijų botas gali laikyti vienu metu. Didesnis skaičius = platesnė diversifikacija, bet ir didesnė rizika.">Maks. pozicijų</label>
+          <input type="number" step="1" min="1" max="20" data-key="PORTFOLIO.MAX_OPEN_POSITIONS" />
+        </div>
+      </div>
+
+      <!-- Kapitalo valdymas -->
+      <div class="section">
+        <h2>💰 Kapitalo valdymas</h2>
+        <div class="fields">
+          <label data-tip="Procentas nuo bendro kapitalo, kurį botas skiria vienai pozicijai. Didesnė reikšmė = didesnė rizika ir pelningumo potencialas.">Pozicijos dydis (%)</label>
+          <input type="number" step="1" min="1" max="100" data-key="AI.POSITION_SIZE_PCT" />
+
+          <label data-tip="Didžiausia suma, kurią botas gali investuoti į vieną sandorį. Sumažinus — mažiau rizikos, bet mažesnis pelningumas.">Maks. investicija (USDC)</label>
+          <input type="number" step="1" min="0" data-key="AI.MAX_TRADE_USDC" />
+        </div>
+      </div>
+
+      <!-- Dirbtinis intelektas -->
+      <div class="section">
+        <h2>🧠 Dirbtinis intelektas</h2>
+        <div class="fields">
+          <label data-tip="Minimalus AI pasitikėjimo lygis (0–1). Didesnė reikšmė = AI atmeta daugiau silpnų signalų, generuoja mažiau, bet tikslesnių sandorių.">Confidence slenkstis</label>
+          <input type="number" step="0.01" min="0" max="1" data-key="AI_CONFIDENCE_THRESHOLD" />
+
+          <label data-tip="Reikalaujamas minimalus Edge (numatomas pranašumas). Didesnė reikšmė = konservatyviau, AI laukia aiškesnių pelno galimybių.">Edge minimalus (%)</label>
+          <input type="number" step="0.0001" min="0" max="1" data-key="EDGE_MIN_PCT" />
+        </div>
+      </div>
+
+      <!-- Rizikos kontrolė -->
+      <div class="section">
+        <h2>⚠️ Rizikos kontrolė</h2>
+        <div class="fields">
+          <label data-tip="Didžiausias leidžiamas kainų skirtumas (spread). Mažesnė reikšmė — mažiau nuostolingų įėjimų, bet mažiau prekybos galimybių.">Maks. Spread (BPS)</label>
+          <input type="number" step="1" min="0" data-key="MAX_SPREAD_BPS" />
+
+          <label data-tip="Didžiausias leistinas kainos nuokrypis nuo norimos įėjimo kainos. Didesnė reikšmė — daugiau vykdomų sandorių, bet didesnis slippage.">Maks. Slippage (BPS)</label>
+          <input type="number" step="1" min="0" data-key="MAX_SLIPPAGE_BPS" />
+
+          <label data-tip="Minimalus RSI rodiklis, nuo kurio botas leidžia pirkimą. Mažesnė reikšmė — agresyvesnis pirkimas.">RSI minimalus</label>
+          <input type="number" step="1" min="0" max="100" data-key="RSI_MIN" />
+
+          <label data-tip="Maksimalus RSI rodiklis, nuo kurio botas leidžia pardavimą. Mažesnė reikšmė — greitesnis pelno fiksavimas, didesnė prekybos apimtis.">RSI maksimalus</label>
+          <input type="number" step="1" min="0" max="100" data-key="RSI_MAX" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Sistema -->
+    <div class="section" style="margin-top:20px; text-align:center;">
+      <h2>🧹 Sistema</h2>
+      <div>
+        <button onclick="triggerFullReset()">🔄 Pilnas išvalymas</button>
+        <button onclick="restartBot()">♻️ Perkrauti botą</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

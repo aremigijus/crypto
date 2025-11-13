@@ -1,0 +1,97 @@
+============================================================
+🤖 ALGORITMINIO PREKYBOS BOTO STRUKTŪRA
+============================================================
+
+/core (Branduolys)
+------------------------------------------------------------
+Ši direktorija yra sistemos širdis, atsakinga už pagrindinį veikimą, duomenų srautus ir prekybos mechaniką.
+
+├── main.py                 # Pagrindinis boto paleidimas. Tai yra programos įvykdymo pradžios taškas.
+├── ai_sizer_summary        # Tikėtina, kad saugo AI pozicijos dydžio nustatymo (sizer) logikos santrauką arba metriką.
+├── order_executor.py       # Atsakingas už prekybos operacijų (orderių) vykdymą biržoje ir prekybos signalų apdorojimą.
+├── ws_bridge.py            # Binance WebSocket (WS) srautas + REST fallback. Užtikrina greitą rinkos duomenų gavimą realiu laiku iš Binance biržos.
+├── exchange_adapter.py     # Biržos adapteris. Leidžia lengviau prijungti kitas biržas (jei reikia) arba supaprastina keitimosi logiką.
+├── execution_validator.py  # Vykdymo validavimas. Tikrina, ar prekybos operacijos (orderiai) atitinka nustatytus reikalavimus ir biržos limitus.
+├── exit_manager.py         # Pozicijų uždarymo (exit) valdymas. Tvarko Take Profit (TP), Stop Loss (SL) ar kitų uždarymo sąlygų logiką.
+├── equity_tracker.py       # Nuosavo kapitalo (Equity) stebėjimas. Reikalingas rizikos skaičiavimams, PnL (pelno/nuostolio) sekimui ir ataskaitoms.
+├── position_sanitizer.py   # Pozicijų sanitaras. Tikrina pozicijų būseną, pašalina negyvas (stuck) ar neteisingai atidarytas pozicijas.
+├── paper_account.py        # Popierinės prekybos (Paper Trading) balansas ir pozicijos. Kritiškai svarbus modulis strategijos testavimui realiu laiku, nerizikuojant realiu kapitalu.
+├── db_ai_metric.py         # AI metrikos duomenų bazės (DB) valdymas. Funkcijos, skirtos AI performance metrikos įrašymui į DB.
+├── db_ingest.py            # Duomenų įkėlimas (Ingest). Funkcijos, skirtos rinkos duomenų ar kitos informacijos įkėlimui į DB.
+├── db_init.py              # Duomenų bazės inicijavimas. Sukuria reikalingas lenteles pirmojo paleidimo metu.
+├── db_manager.py           # Centrinis DB valdymas. Tvarko prisijungimą, atjungimą ir bendras DB operacijas.
+├── position_sanitizer.py   # Dublikatas, skirtas pozicijų būsenos tikrinimui ir valymui.
+├── universe_manager.py     # Prekybos instrumentų (simbolių) visatos valdymas. Nustato, kuriomis monetomis leidžiama prekiauti.
+├── config.py               # Konfigūracijos įkrovimas. Python modulis, skirtas įkelti nustatymus iš config.json. Centralizuotas sistemos konfigūracijos valdymas.
+├── config_default.json     # Konfigūracija - rezervinis failas. Naudojamas kaip numatytoji (default) konfigūracija, jei config.json neegzistuoja.
+└── config.json             # Konfigūracija - visi boto reguliuojami parametrai yra čia. Pagrindinis nustatymų failas.
+
+------------------------------------------------------------
+/risk (Rizika)
+------------------------------------------------------------
+Atskirtas rizikos valdymo blokas, užtikrinantis kapitalo apsaugą.
+
+├── risk_manager.py         # Rizikų valdymo blokas. Nustato bendras rizikos taisykles (TP, SL, maksimalus pozicijų skaičius, maksimali ekspozicija).
+└── daily_quard.py          # Dienos apsauga. Valdo dienos nuosmukio (Daily Drawdown, DD) kontrolę. Pasiekus limitą, stabdo naujų pozicijų atidarymą.
+
+------------------------------------------------------------
+/ai (Dirbtinis Intelektas / Strategija)
+------------------------------------------------------------
+Strategijos ir signalų generavimo logika.
+
+├── ai_performance.py       # AI performance metrikos ir equity istorijos skaičiavimas/saugojimas.
+├── ai_signals.py           # AI signalų vertinimas. Paverčia AI modelio išvestį konkrečiais prekybos signalais (Pirkti/Parduoti).
+├── ai_boost_layer.py       # Tikėtina, kad tai yra papildomas sluoksnis arba filtras, skirtas sustiprinti (boost) ar patikrinti signalus.
+├── ai_sizer.py             # Pozicijos dydžio nustatymas. Apskaičiuoja, kokia kapitalo dalis turi būti skiriama naujai pozicijai, atsižvelgiant į AI pasitikėjimą (confidence) ir riziką.
+├── ai_sizer_debug.py       # Pozicijos dydžio nustatymo derinimas (debug). Tikėtina, kad fiksuoja detalius sprendimo priėmimo etapus.
+├── ai_tuner.py             # AI parametrų derinimas. Naudojamas optimizuoti AI modelio parametrus, siekiant geriausių rezultatų.
+├── indicator_engine.py     # Techninių indikatorių variklis. Skaičiuoja techninius indikatorius (pvz., RSI, MA, MACD), kurie naudojami kaip įvestis AI modeliui.
+└── ai_learning.py          # AI mokinimasis. Modulis, atsakingas už AI modelio treniravimą (learning) ar persimokymą (re-training).
+
+------------------------------------------------------------
+/notify (Pranešimai)
+------------------------------------------------------------
+Blokas, skirtas pranešimams siųsti naudotojui.
+
+├── telegram.py             # Telegram integracija. Tvarko pranešimų siuntimą į Telegram, įskaitant rate-limit valdymą ir periodines ataskaitas.
+├── trade_events.py         # Prekybos įvykių pranešimai. Formatuoja pranešimus apie uždarytas pozicijas (su PnL % ir USDC).
+└── notifier.py             # Vieninga funkcija pranešimams. Centrinis siuntimo taškas, kuris nukreipia pranešimus į Telegram, konsolę ar logus, valdo pranešimų slopinimą (throttling).
+
+------------------------------------------------------------
+/dashboard (Vizualizacija)
+------------------------------------------------------------
+Web sąsaja boto stebėjimui ir valdymui.
+
+├── app.py                  # Flask API. Sukuria Web Serverį, per kurį pasiekiama vizualizacija.
+├── COMPAT_MATRIX_AUTO.md   # Automatiškai sugeneruota suderinamumo matrica.
+├── COMPAT_MATRIX.md        # Rankinė suderinamumo matrica.
+├── static/                 # Statinių failų (Frontend) direktorija.
+│   ├── sound               # mp3, wav failai programos garsams.
+│   ├── favicon.ico         # Naršyklės skirtuko ikona.
+│   ├── scripts.js          # Frontend logika (AJAX, lentelės). Tvarko interaktyvumą Web puslapyje.
+│   └── style.css           # CSS stiliai.
+└── templates/              # HTML šablonų direktorija.
+    ├── dashboard.html      # Pagrindinis Dashboard vizualas.
+    ├── settings.html       # Nustatymų keitimas per vizualą.
+    ├── trades.html         # Pirkimų / pardavimų istorija per vizualą.
+    └── compat_report.html  # Suderinamumo ataskaitos vizualizacija.
+
+------------------------------------------------------------
+/data (Duomenys)
+------------------------------------------------------------
+Vietos, skirtos duomenims, logams ir atsarginėms kopijoms.
+
+├── logs                    # Boto veiklos log failai.
+├── backups                 # Atsarginės duomenų kopijos.
+├── core.db                 # Pagrindinė duomenų bazė (SQLite). Saugomos pozicijos, balansas, istorija.
+├── boost_activity.log      # Detalus AI boost sluoksnio veiklos logas.
+└── sizer_debug.log         # Detalus pozicijos dydžio nustatymo logas, skirtas derinimui.
+
+------------------------------------------------------------
+Root (Šakninė direktorija)
+------------------------------------------------------------
+Paleidimo ir konfigūracijos failai.
+
+.env                        # Aplinkos kintamieji (Environment variables). Saugomi API raktai (Binance, Telegram) prisijungimui.
+manager.py                  # Boto paleidimo, stabdymo ir valdymo logika (CLI meniu).
+start_bot.bat               # Boto paleidimas vienu paspaudimu (Windows Batch failas). Naudotojo sąsaja, leidžianti paleisti/sustabdyti/išvalyti duomenis.

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8">
+  <title>API suderinamumo testas</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { 
+        font-family: system-ui, sans-serif; 
+        color: #e5e7eb; 
+        background: #0d1117; 
+        margin: 0; 
+        padding: 20px; 
+    }
+    h1 { 
+        font-size: 1.6rem; 
+        margin-bottom: 10px; 
+        color: #f9fafb; 
+    }
+    /* Naujas stilius konteineriui, kad mygtukai būtų vienoje eilutėje */
+    .controls-container { 
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between; 
+        margin-top: 15px; 
+    }
+    
+    /* =================================================================== */
+    /* CSS PATAISOS */
+    /* =================================================================== */
+
+    /* Padidinta specifiškumas ir table-layout: fixed (būtina, kad veiktų plotis) */
+    .results table { 
+        width: 95%; 
+        border-collapse: collapse; 
+        margin-top: 20px; 
+        table-layout: fixed; 
+    }
+    
+    .results th, .results td { 
+        padding: 10px; 
+        border-bottom: 1px solid rgba(255,255,255,0.1); 
+        text-align: left;
+        word-wrap: break-word; 
+    }
+    .results th { 
+        background: #161b22; 
+        color: #f1f5f9; 
+    }
+
+    /* Stulpelių pločiai */
+    .results thead tr th:nth-child(1),
+    .results tbody tr td:nth-child(1) {
+        width: 35%; /* Endpoint */
+    }
+    .results thead tr th:nth-child(2),
+    .results tbody tr td:nth-child(2) {
+        width: 15%; /* Statusas */
+        text-align: center; 
+    }
+    .results thead tr th:nth-child(3),
+    .results tbody tr td:nth-child(3) {
+        width: 50%; /* Trūkstami laukai */
+    }
+
+    /* Būsenos ir trūkstamų laukų stiliai */
+    tr.ok td.status { 
+        color: #22c55e; 
+        font-weight: 600; 
+        text-align: center;
+    }
+    tr.fail td.status { 
+        color: #ef4444; 
+        font-weight: 600; 
+        text-align: center;
+    }
+    
+    .missing { /* Atitinka JS naudojamą klasę */
+        color: #facc15; 
+        font-style: italic; 
+    }
+    
+    /* Kiti stiliai (nepakitę) */
+    #btn-toggle-sound {
+        border: none; padding: 10px 15px; background-color: #374151; color: #f3f4f6; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; margin-left: 15px; font-weight: 500; display: flex; align-items: center;
+    }
+    #btn-toggle-sound:hover { background-color: #4b5563; }
+    #btn-toggle-sound.enabled { background-color: #22c55e; color: #0d1117; }
+    #btn-toggle-sound.enabled:hover { background-color: #16a34a; }
+    #btn-refresh {
+        border: none; padding: 10px 15px; background-color: #3b82f6; color: #f3f4f6; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; margin-left: 15px; font-weight: 500; min-width: 100px;
+    }
+    #btn-refresh:hover:not(:disabled) { background-color: #2563eb; }
+    #btn-refresh:disabled { background-color: #4b5563; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <div class="controls-container">
+    <div class="summary">
+      <p id="summary-text" class="summary-text">Rezultatai bus rodomi čia...</p>
+    </div>
+    <div style="display: flex; align-items: center;">
+      <button id="btn-refresh" class="refresh">Atnaujinti</button>
+      <button id="btn-toggle-sound" title="Įjungti/išjungti garso signalą">
+        <span id="sound-icon">🔈</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="results">
+    <table>
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th>Statusas</th>
+          <th>Trūkstami laukai</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+  // =================================================================
+  // GARSO KONTROLĖS KINTAMASIS (Numatyta: Įjungtas)
+  // =================================================================
+  let isSoundEnabled = (localStorage.getItem('soundEnabled') !== 'false'); 
+  
+  // =================================================================
+  // NAUJA FUNKCIJA: Garso paleidimas naudojant Audio objektą
+  // =================================================================
+  const alertSound = new Audio('{{ url_for("static", filename="sound/off-hook.mp3") }}');
+  alertSound.loop = false; 
+
+  function playBeep() {
+    if (!isSoundEnabled) { return; }
+    
+    try {
+        alertSound.currentTime = 0;
+        alertSound.play().catch(e => {
+            console.warn("Garso paleidimo klaida. Gali reikėti vartotojo sąveikos:", e.message);
+        });
+    } catch (e) {
+        console.error("Klaida paleidžiant garsą:", e);
+    }
+  }
+
+  // =================================================================
+  // Funkcija garso mygtuko būsenos atnaujinimui
+  // =================================================================
+  function updateSoundButton() {
+      const btn = document.getElementById('btn-toggle-sound');
+      const icon = document.getElementById('sound-icon');
+      if (isSoundEnabled) {
+          icon.textContent = '🔈'; 
+          btn.classList.remove('disabled');
+          btn.title = 'Garso signalas įjungtas. Paspauskite, kad išjungtumėte.';
+      } else {
+          icon.textContent = '🔇'; 
+          btn.classList.add('disabled');
+          btn.title = 'Garso signalas išjungtas. Paspauskite, kad įjungtumėte.';
+      }
+  }
+
+  // =================================================================
+  // Pagrindinė tikrinimo funkcija
+  // =================================================================
+  async function runCheck() {
+    const btn = document.getElementById('btn-refresh');
+    btn.disabled = true;
+    btn.textContent = "Tikrinama...";
+    const tbody = document.querySelector('.results tbody');
+    tbody.innerHTML = "";
+    try {
+      const res = await fetch('/api/check_compat_matrix');
+      const data = await res.json();
+
+      data.details.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = item.status === "ok" ? "ok" : "fail";
+        const missing = (item.missing_fields && item.missing_fields.length)
+          ? item.missing_fields.join(", ")
+          : "";
+
+        // 💡 KRITINĖ PATAISA: Įterpiame HTML turinį vienoje eilutėje
+        tr.innerHTML = `<td>${item.endpoint}</td><td class="status">${item.status.toUpperCase()}</td><td>${missing ? `<div class="missing">${missing}</div>` : ""}</td>`;
+        
+        tbody.appendChild(tr);
+      });
+
+      const s = data.summary;
+      document.getElementById('summary-text').textContent =
+        `Iš viso: ${s.total}, ✅ OK: ${s.passed}, ❌ FAIL: ${s.failed}`;
+
+      // Garsas, jei bent vienas statusas yra FAIL
+      if (s.failed > 0) {
+          playBeep();
+      }
+
+    } catch (err) {
+      alert("Klaida gaunant duomenis iš /api/check_compat_matrix");
+      console.error(err);
+    } finally {
+      btn.textContent = "Atnaujinti";
+      btn.disabled = false;
+    }
+  }
+
+  // =================================================================
+  // ĮVYKIŲ KLAUSYTOJAI (Event Listeners)
+  // =================================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    // Garso mygtuko perjungimo logika
+    const soundBtn = document.getElementById('btn-toggle-sound');
+    soundBtn.addEventListener('click', () => {
+        isSoundEnabled = !isSoundEnabled; 
+        localStorage.setItem('soundEnabled', isSoundEnabled); 
+        updateSoundButton(); 
+        if (isSoundEnabled) {
+            playBeep(); 
+        }
+    });
+    
+    updateSoundButton(); 
+    
+    // Pradinis patikrinimas ir automatinis atnaujinimas
+    runCheck(); 
+    setInterval(runCheck, 5000); 
+    
+    // Atnaujinimo mygtukas
+    document.getElementById('btn-refresh').addEventListener('click', runCheck);
+  });
+  </script>
+</body>
+</html>

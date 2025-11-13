@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sandorių istorija</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-page="trades">
+  <div class="container">
+    
+    <!-- Santraukos juosta -->
+    <section class="trades-summary card">
+      <div class="item profit">
+        <span>Dienos P&amp;L</span>
+        <strong id="sum-day-pnl">0%</strong>
+      </div>
+      <div class="item">
+        <span>Pelnas (USDC)</span>
+        <strong id="sum-day-usdc">0</strong>
+      </div>
+      <div class="item">
+        <span>Win rate</span>
+        <strong id="sum-win-rate">0%</strong>
+      </div>
+      <div class="item">
+        <span>Sandorių sk.</span>
+        <strong id="sum-trades">0</strong>
+      </div>
+      <div class="item">
+        <span>Vid. laikymo laikas</span>
+        <strong id="sum-held">0m</strong>
+      </div>
+       <!--<span id="clock">--:--:--</span> -->               <!-- Laikrodis-->
+    </section>
+
+    <!-- Mini grafikas (7 dienų vid. P&L) -->
+    <section class="card">
+      <div class="card-title">📈 Paskutinių 7 dienų vidutinis dienos P&amp;L (%)</div>
+      <canvas id="tradePnlChart" style="height:220px;"></canvas>
+    </section>
+
+    <!-- Filtrai -->
+    <section class="card">
+      <div class="card-title">🔎 Filtrai</div>
+      <div class="filters">
+        <label>Įvykis:
+          <select id="tradeFilter">
+            <option value="ALL">ALL</option>
+            <option value="BUY">BUY</option>
+            <option value="SELL" selected>SELL</option>
+          </select>
+        </label>
+        <label>Paieška (simbolis ar priežastis): <input id="tradeSearch" placeholder="pvz., BTC" /></label>
+        <span id="log-update" class="muted tiny" style="margin-left:auto;">Atnaujinta: -</span>
+      </div>
+    </section>
+
+    <!-- Lentelė -->
+    <section class="card">
+      <div class="card-title">🧾 Prekybos žurnalas</div>
+      <div class="table-wrap">
+        <table class="table" id="tbl-trades">
+          <thead>
+            <tr>
+              <th>DATA</th>
+              <th>LAIKAS</th>
+              <th>ĮVYKIS</th>
+              <th>COIN</th>
+              <th>KIEKIS</th>
+              <th>KAINA</th>
+              <th>PNL %</th>
+              <th>LAIKYMO LAIKAS</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>

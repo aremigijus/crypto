@@ -1,0 +1,90 @@
+{
+  "MODE": "MAINNET",
+  "DRY_RUN": true,
+  "BASE_QUOTE": "USDC",
+
+  "UNIVERSE": ["BTCUSDC", "ETHUSDC", "SUIUSDC", "XPLUSDC", "FDUSDUSDC"],
+  "TOP_USDC_LIMIT": 20,
+
+  "FEE_TAKER": 0.0006,
+  "FEE_MAKER": 0.0004,
+  "MAX_SLIPPAGE_BPS": 15,
+  "MIN_LIQUIDITY_USDC": 1000,
+
+  "AI_ENABLED": true,
+  "AI_CONFIDENCE_THRESHOLD": 0.55,
+  "EDGE_MIN_PCT": 0.0005,
+  "MOMENTUM_THRESHOLD": 0.0013,
+  "RSI_FILTER_ENABLED": true,
+  "RSI_MIN": 45,
+  "RSI_MAX": 75,
+
+  "DAILY_MAX_DRAWDOWN_PCT": 2.0,
+  "LOGGING_LEVEL": "INFO",
+
+  "EXIT": {
+    "TP_BASE": 0.06,
+    "SL_BASE": 0.02,
+    "TSL_BASE": 0.015,
+    "MIN_HOLD_TIME_H": 0.083,
+    "AI_EXIT_MIN_HOLD_H": 0.167,
+    "HOLD_TIMEOUT_H": 12,
+    "MAX_HOLD_H": 24,
+    "VOL_SCALE": true,
+    "CONFIDENCE_SCALE": true
+  },
+
+  "PORTFOLIO": {
+    "TARGET_UTILIZATION_PCT": 0.60,
+    "MAX_OPEN_POSITIONS": 8,
+    "RISK_PER_TRADE_PCT": 0.0075,
+    "SIZE_CONFIDENCE_WEIGHT": 0.65,
+    "SIZE_VOLATILITY_WEIGHT": 0.35,
+    "MIN_QUOTE": 20,
+    "MAX_QUOTE_PCT_OF_CASH": 0.15,
+    "MAX_ALLOCATION_PCT_PER_TRADE": 0.12,
+    "MAX_EXPOSURE_PCT": 85.0
+  },
+
+  "COOLDOWN_SECONDS": 120,
+  "MIN_PER_TRADE_USDC": 25,
+  "MAX_PER_TRADE_USDC": 500,
+
+  "AI_SETTINGS": {
+    "AUTO_WARMUP": true,
+    "WARMUP_MIN_READY_RATIO": 0.7,
+    "WARMUP_FORCE_SYMBOL": "BTCUSDC",
+    "FORCE_MODE": false,
+    "BOOST_ENABLED": true,
+    "BOOST_THRESHOLD": 0.85,
+    "VOLATILITY_CEILING_PCT": 8,
+    "HISTORY_WINDOW": 300
+  },
+    "TREND_FILTER": {
+    "EMA_FAST": 9,
+    "EMA_SLOW": 50,
+    "TREND_UP_BIAS": 0.0005,
+    "TREND_DOWN_BIAS": -0.0005,
+    "ENABLED": false
+  },
+
+  "GRAPH": {
+    "UPDATE_INTERVAL_SEC": 30,
+    "MAX_POINTS": 500
+  },
+
+  "DASHBOARD": {
+    "REFRESH_INTERVAL_MS": 1500,
+    "SHOW_TEST_LABEL": true,
+    "SHOW_UPTIME": true,
+    "SHOW_RISK_GUARD": true
+  },
+
+    "NOTIFY": {
+    "ON_BUY": false,
+    "ON_SELL": true,
+    "ON_RISK_ALERT": true,
+    "PERIODIC_REPORTS": false
+  }
+
+}

@@ -1,0 +1,725 @@
+/*
+  CRYPTO Dashboard stiliai
+  - Tamsi tema
+  - Grafikai apačioje
+*/
+
+:root{
+  /* ==========================================================
+     BAZINĖS PALETĖS SPALVOS
+     ========================================================== */
+
+  /* Pagrindiniai fonai ir UI elementai */
+  --color-bg-main: #0f1824;        /* Tamsus fonas (body) */
+  --color-bg-panel: #131e2d;       /* Tamsesnis panelės fonas (cards, topbar) */
+  --color-bg-panel-2: #0f1a2a;     /* Dar tamsesnis panelės fonas (tables, chart-card) */
+  --color-bg-darker: #1b1b1b;      /* Tamsesnis UI elementų fonas (filter, bot-mode, input) */
+  --color-border: #23344a;         /* Pagrindinė kraštinių spalva */
+  --color-border-darker: #333;     /* Tamsesnė kraštinių spalva */
+
+  /* Teksto ir būsenos spalvos */
+  --color-text-main: #d7e2f0;      /* Pagrindinė teksto spalva */
+  --color-text-muted: #8ca0b8;     /* Prislopinta teksto spalva */
+  --color-text-light-gray: #eee;   /* Šviesiai pilkas tekstas */
+  --color-text-title: #fbe524;     /* Antraštės spalva (geltona) */
+
+  /* Veiksmų spalvos */
+  --color-green: #2dd432;          /* Žalia (teigiamas, Išsaugoti) */
+  --color-red: #f11b1b;            /* Raudona (neigiamas, Sell) */
+  --color-yellow: #fbe524;         /* Geltona (Neutralus, Test) */
+
+  /* Trades lentelės spalvos (šiek tiek šviesesnės, kad išsiskirtų) */
+  --color-buy-action: #2dd432;
+  --color-sell-action: #f11b1b;
+  --color-buy-row: #c7f9cc;
+  --color-sell-row: #ffadad;
+
+  /* Grafiko spalvos */
+  --color-chart-green: #2dd432;
+  --color-chart-blue: #4c99f8;
+  
+  /* Skaidrūs fonai (Trades History) */
+  --color-trade-buy-tint: rgba(0, 255, 100, 0.07);
+  --color-trade-sell-tint: rgba(255, 50, 50, 0.07);
+  --color-trade-failed-tint: rgba(255, 200, 0, 0.1);
+  --color-card-shadow: rgba(0,0,0,0.4);
+  --color-search-bg: #1b1b1b;
+}
+
+
+/* ==========================================================
+   BENDRIEJI STILIAI IR TIPOGRAFIJA
+   ========================================================== */
+
+* { box-sizing: border-box; }
+
+body{
+  margin:0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  background-color: var(--color-bg-main);
+  color: var(--color-text-main);
+  line-height: 1.5;
+}
+
+.container{
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 18px 16px 42px;
+}
+
+/* ==========================================================
+   TOP BAR (VIRŠUTINĖ JUOSTA)
+   ========================================================== */
+
+.topbar {
+  background: var(--color-bg-panel);
+  border-radius: 10px;
+  padding: 12px 18px;
+  border: 1px solid var(--color-border);
+  margin-bottom: 18px;
+}
+
+.topbar-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+/* Kairė dalis */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+#clock {
+  font-family: "Roboto Mono", monospace; /* fiksuoto pločio */
+  letter-spacing: 0.5px;
+  font-size: 1.6em;
+  font: bold;
+  color: #4c99f8;
+}
+
+
+#runtime-container, #started-container { 
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95em;
+  color: #cbd5e1;
+}
+
+#runtime-container strong, #started-container strong { 
+  color: #f3f4f6;
+  font-weight: 700;
+}
+
+/* Dešinė — meniu nuorodos */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-right a {
+  color: var(--color-chart-blue); 
+  font-weight: 600;
+  font-size: 1em;
+  text-decoration: none;
+  transition: color 0.2s ease, transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px; 
+  border-radius: 6px;
+}
+
+.topbar-right a:hover {
+  color: var(--color-text-main); 
+  transform: translateY(-1px);
+  background-color: #374151; 
+}
+
+
+/* ==========================================================
+   KORTELĖS (CARDS)
+   ========================================================== */
+
+.cards-row{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.card{
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 16px;
+}
+.card-title{
+  color: var(--color-text-title); /* Geltona spalva */
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.item{
+  display: flex;
+  flex-direction: column;
+}
+.item span{
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.item strong{
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Nauja .kv klasė naudojama dashboard.html (KPI kortelėse) */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-size: 14px;
+}
+.kv span {
+  color: var(--color-text-muted);
+  font-size: 14px; 
+}
+.kv strong {
+  font-size: 14px; 
+}
+
+/* ==========================================================
+   LENTELĖS (TABLES)
+   ========================================================== */
+
+.table-wrap{
+  overflow-x: auto;
+}
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table thead th{
+  color: var(--color-text-muted);
+  text-align: left;
+  padding: 10px 8px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--color-border);
+}
+.table tbody td{
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-border-darker);
+  color: var(--color-text-main);
+}
+.table tbody tr:last-child td{
+  border-bottom: none;
+}
+.table tbody tr:hover{
+  background-color: rgba(255,255,255,0.03);
+}
+
+
+/* ==========================================================
+   GRAFIKŲ BLOKAS (CHARTS)
+   ========================================================== */
+
+.charts-section{ 
+  margin-top:16px; 
+  /* chart-section naudojame .card stilių */
+}
+.charts-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:14px;
+  margin-top: 15px; /* Tarpas po antrašte */
+}
+.chart-card{
+  background: var(--color-bg-panel-2);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px;
+  height: 360px;
+}
+
+.chart-title{
+  color: var(--color-text-title); 
+  margin-bottom:8px;
+  font-weight:600;
+  font-size: 15px;
+  text-align: center;
+}
+
+canvas{ width:100% !important; height: 300px !important; }
+#equityPctChart {
+  width: 100% !important;
+  height: 320px !important;
+}
+
+/* TRADES PUSLAPIO SPECIFIKA */
+
+/* Mini P&L grafikas */
+#tradePnlChart {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  padding: 10px;
+  height: 150px !important; 
+}
+#tradePnlChart canvas {
+  height: 100% !important;
+}
+
+/* TRADES SUMMARY KORTELE */
+.trades-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px; 
+}
+
+.trades-summary .item {
+  flex-grow: 1;
+  flex-basis: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  background: var(--color-bg-panel);
+  border-radius: 8px;
+  min-width: 0;
+  text-align: center;
+}
+
+/* FILTRAI */
+.filters {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.filters label {
+    font-size: 14px;
+    color: var(--color-text-muted);
+}
+.filters input, .filters select { 
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-darker);
+  background: var(--color-search-bg);
+  color: var(--color-text-light-gray);
+  min-width: 120px; 
+}
+
+
+/* ==========================================================
+   SETTINGS PUSLAPIO STILIAI
+   ========================================================== */
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; 
+    gap: 16px; 
+}
+
+.category-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--color-text-title);
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--color-border-darker);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.category-title i {
+    color: var(--color-text-title);
+    font-size: 18px;
+}
+
+/* Bendras nustatymo eilutės stilius */
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); 
+    font-size: 14px;
+}
+.setting-row:last-child {
+    border-bottom: none;
+}
+
+.setting-label {
+    color: var(--color-text-muted);
+    flex-grow: 1; 
+}
+
+.setting-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* INPUT laukai (skaitymui ir įvedimui) */
+.setting-row input[type="number"],
+.setting-row input[type="text"] {
+    background: var(--color-bg-darker);
+    border: 1px solid var(--color-border-darker);
+    color: var(--color-text-main);
+    padding: 4px 8px;
+    border-radius: 6px;
+    width: 80px;
+    text-align: right;
+}
+
+/* SLIDER stilius */
+.setting-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 150px;
+    height: 6px;
+    background: var(--color-bg-darker);
+    border-radius: 3px;
+    outline: none;
+    opacity: 0.9;
+    transition: opacity .2s;
+    margin: 0 10px;
+}
+.setting-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-chart-blue);
+    cursor: pointer;
+}
+.setting-row input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-chart-blue);
+    cursor: pointer;
+}
+
+/* TOGGLE SWITCH (Perjungiklis) stiliai (vietoje checkbox) */
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px; 
+    height: 22px; 
+    margin-left: 10px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider-switch {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-border); 
+    transition: .4s;
+    border-radius: 22px;
+}
+
+.slider-switch:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--color-text-light-gray); 
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider-switch {
+    background-color: var(--color-green); 
+}
+
+input:checked + .slider-switch:before {
+    transform: translateX(16px); 
+}
+
+/* Mygtukų dizainas */
+.button-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--color-border);
+}
+
+.btn {
+    padding: 8px 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    border: 1px solid transparent;
+    font-family: inherit; 
+    white-space: nowrap; 
+}
+
+/* Pagrindinis mygtukas (Išsaugoti) */
+.btn-primary {
+    background-color: var(--color-green);
+    color: var(--color-bg-main);
+    border-color: var(--color-green);
+}
+.btn-primary:hover {
+    background-color: #27c12d;
+}
+
+/* Pavojingas mygtukas (Išvalyti istoriją) */
+.btn-danger {
+    background-color: var(--color-red);
+    color: white;
+    border-color: var(--color-red);
+}
+.btn-danger:hover {
+    background-color: #d11212;
+}
+
+/* Tiesiog nuoroda mygtuko stiliumi */
+.btn-link {
+    color: var(--color-chart-blue); 
+    background: none;
+    border: none;
+    text-decoration: underline;
+    font-weight: 500;
+    padding: 0;
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-link:hover {
+    color: var(--color-text-main);
+}
+
+/* Pranešimų valdymas (Tinklelio išdėstymas) */
+.notifications-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px 20px; 
+    margin-top: 15px;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    color: var(--color-text-muted);
+}
+
+
+/* ==========================================================
+   RESPONSIVE
+   ========================================================== */
+
+@media (max-width: 980px){
+  .cards-row{ grid-template-columns: 1fr; }
+  .grid-4{ grid-template-columns: 1fr 1fr; }
+  .charts-grid{ grid-template-columns: 1fr; }
+  
+  /* Settings tinklelis (ant mobiliųjų – vienas stulpelis) */
+  .settings-grid{ grid-template-columns: 1fr; }
+  .notifications-grid{ grid-template-columns: 1fr; }
+  
+  .topbar-right { gap: 8px; } 
+  .topbar-content { flex-wrap: wrap; gap: 10px; } 
+  .topbar-left { flex-basis: 100%; margin-bottom: 10px; }
+  .topbar-right { order: 3; } 
+}
+
+
+/* 🔵 LIVE/TEST režimo indikatorius */
+.bot-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+  font-size: 1.1em;
+  letter-spacing: 0.3px;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+.indicator-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  background-color: #2ecc71; /* numatytai TEST (žalia) */
+  box-shadow: 0 0 10px rgba(0, 252, 105, 0.8);
+  transition: all 0.3s ease;
+}
+
+.bot-mode.live .indicator-dot {
+  background-color: #ff3b30; /* raudona LIVE režimui */
+  box-shadow: 0 0 10px rgba(255, 59, 48, 0.8);
+}
+
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ========================================================== */
+/* ATNAUJINTA POZICIJŲ LENTELĖ SU ŠVELNIU KAINOS PEREINAMU EFEKTU */
+/* ========================================================== */
+
+.table thead th {
+  font-weight: bold;
+  color: var(--color-text-light-gray);
+}
+
+.live-price{ transition: background-color .8s ease, color .8s ease; }
+.live-price.up{ background-color: rgba(46,204,113,.15); color:#24c76f; }
+.live-price.down{ background-color: rgba(231,76,60,.15); color:#ff3b30; }
+
+.pnl-pos{ color:#24c76f; font-weight:bold; }
+.pnl-neg{ color:#ff3b30; font-weight:bold; }
+.pnl-neutral{ color:#aaa; font-weight:bold; }
+
+/* ========================================================== */
+/* NAUJOS POZICIJOS FADE-IN EFEKTAS */
+/* ========================================================== */
+
+@keyframes fadeInNewRow {
+  from {
+    opacity: 0;
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  to {
+    opacity: 1;
+    background-color: transparent;
+  }
+}
+
+.new-row {
+  animation: fadeInNewRow 0.8s ease-out;
+}
+/* ========================================================== */
+/* FADE-OUT EFEKTAS UŽDAROMOMS POZICIJOMS */
+/* ========================================================== */
+
+@keyframes fadeOutRow {
+  from {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  to {
+    opacity: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+  }
+}
+
+.fade-out {
+  animation: fadeOutRow 1s ease forwards;
+}
+
+/* ============================================================
+   Live indikatoriaus ir PnL spalvų praplėtimas (v10)
+   ĮKLIJUOTI PAČIOJE PABAIGOJE
+   ============================================================ */
+.pnl-pos { color: #24c76f !important; font-weight: 600; }
+.pnl-neg { color: #ff3b30 !important; font-weight: 600; }
+.pnl-neutral { color: #ccc !important; }
+
+td.live-price.up   { background-color: rgba(36,199,111,0.15); transition: background-color 0.3s; }
+td.live-price.down { background-color: rgba(255,59,48,0.15); transition: background-color 0.3s; }
+
+/* Gyvų duomenų indikatorius */
+#live-indicator {
+  display:flex; align-items:center; gap:.5rem;
+  margin:.5rem 0 1rem 0; padding:.4rem .6rem;
+  border-radius:.5rem; background: rgba(255,255,255,0.04);
+  font-size:.95rem; line-height:1.2;
+}
+#live-indicator .led {
+  width:.6rem; height:.6rem; border-radius:50%;
+  background:#777; box-shadow:0 0 0 .15rem rgba(0,0,0,0.15) inset;
+}
+#live-indicator.ok   .led { background:#24c76f; }
+#live-indicator.warn .led { background:#ffb84d; }
+#live-indicator.stale .led { background:#ff3b30; }
+#live-indicator .text { opacity:.9; }
+#live-indicator .ago  { margin-left:auto; opacity:.6; font-size:.85rem; }
+
+/* ==========================================================
+   Rizikos statuso spalvos
+   ========================================================== */
+.risk-ok {
+  color: #24c76f;      /* žalia */
+  font-weight: 600;
+}
+.risk-stop {
+  color: #ff3b30;      /* raudona */
+  font-weight: 600;
+}
+/* Tooltip su švelniu atsiradimo vėlavimu */
+[data-tip] {
+  position: relative;
+  cursor: help;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 120%;
+  background: #202325;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 6px 8px;
+  white-space: normal;
+  width: 260px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  z-index: 20;
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px);
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+}
+
+[data-tip]:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0.3s;
+}
+.ai-metrics-summary {
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.9rem;
+  color: #ccc;
+  margin-bottom: 6px;
+}
+
+.ai-metrics-summary strong {
+  color: #fff;
+  font-weight: 600;
+}

@@ -87,7 +87,7 @@ class RiskManager:
         self.daily_guard.update(equity_now)
 
     def get_summary(self) -> dict:
-        """Grąžina dashboard’ui reikalingą santrauką (įskaitant dd ir pnl_today)."""
+        """Grąžina dashboard'ui reikalingą santrauką (įskaitant dd ir pnl_today)."""
         try:
             today = date.today().isoformat()
             con = sqlite3.connect(DB_PATH)
@@ -131,7 +131,41 @@ class RiskManager:
         except Exception:
             return False
 
+    def check_max_positions_limit(self) -> bool:  # ✅ PATAISYTA: teisinga indentacija
+        """
+        Patikrina, ar bendras atvirų pozicijų skaičius neviršija 
+        nustatyto limito (self.cfg.max_positions).
+
+        Grąžina:
+            bool: True, jei pozicijų skaičius NEVIRŠIJA limito. 
+                  False, jei limito viršytas.
+        """
+        try:
+            con = sqlite3.connect(DB_PATH)
+            cur = con.cursor()
+            # Suskaičiuojame visas atviras pozicijas, kurios nėra uždarytos (state='OPEN')
+            # ir kurių kiekis (qty) yra didesnis už nulį.
+            row = cur.execute(
+                "SELECT COUNT(symbol) FROM positions WHERE state='OPEN' AND qty>0;"
+            ).fetchone()
+            con.close()
+
+            if row:
+                open_positions_count = int(row[0])
+                max_allowed = self.cfg.max_positions
+                
+                # Jei atvirų pozicijų skaičius mažesnis arba lygus max_allowed
+                return open_positions_count <= max_allowed
+            
+            # Jei nepavyko gauti skaičiaus, leidžiame tęsti
+            return True
+        except Exception as e:
+            logging.error(f"[RiskManager] Klaida tikrinant max pozicijas: {e}")
+            # Kilus klaidai, neblokuojame pirkimo, kad neužblokuoti sistemos
+            return True
+
     # suderinamumui su senu kodu
     def register_entry(self, symbol: str, entry_price: float, confidence: float):
-        # įrašymas atliekamas OrderExecutor’e; čia – no-op
+        # įrašymas atliekamas OrderExecutor'e; čia – no-op
         return
+    

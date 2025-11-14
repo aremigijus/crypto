@@ -1,55 +1,40 @@
+# ai/ai_tuner.py
 # ============================================================
 # ai/ai_tuner.py — Dieninis AI parametrų "tuningas" (DB-only)
-# ------------------------------------------------------------
-# Skaito rezultatus iš DB (trades) ir pateikia rekomendacijas
-# (loguose). Nerašo į failus, nekeičia config tiesiogiai.
-#
-# Integracija su main:
-#   from ai.ai_tuner import run_ai_tuner_daily
-#   ... kas 24h -> run_ai_tuner_daily()
 # ============================================================
 
-from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone, timedelta
 import logging
 from statistics import mean
 
-try:
-    from core.db_manager import DB_PATH
-except Exception:
-    DB_PATH = "data/bot_data.db"
-
+from core.db_manager import DB_PATH
 
 def _read_trades(days: int = 2):
     """Paima paskutinių N dienų uždarytus sandorius iš DB."""
     try:
-        con = sqlite3.connect(DB_PATH)
-        cur = con.cursor()
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         rows = cur.execute(
             """
             SELECT ts, pnl_pct, confidence
             FROM trades
-            WHERE ts >= ? AND event='SELL'
+            WHERE ts >= ? AND event='CLOSE'
             ORDER BY ts DESC
             """,
             (since,)
         ).fetchall()
-        con.close()
+        conn.close()
         return rows
     except Exception as e:
-        logging.error(f"[AI-TUNER] Klaida skaitant trades: {e}")
+        logging.error(f"[AI-TUNER] Klaida skaitant trades iš DB: {e}")
         return []
 
-
-def run_ai_tuner_daily(days: int = 2) -> None:
-    """
-    Paprastas „tuneris“:
-     - skaičiuoja win rate, avg pnl ir avg confidence per paskutines N dienų
-     - išveda rekomendacijas loguose (pvz. koreguoti AI_CONFIDENCE_THRESHOLD)
-    """
+def run_ai_tuner_daily(days: int = 7):
+    """Apskaičiuoja metrikas ir logina patarimus."""
+    logging.info(f"--- [AI-TUNER] Kasdienė metrikų analizė (per {days}d.) ---")
     rows = _read_trades(days=days)
     if not rows:
         logging.info("[AI-TUNER] Nėra pakankamai sandorių rekomendacijoms.")
@@ -63,29 +48,20 @@ def run_ai_tuner_daily(days: int = 2) -> None:
     avg_pnl = mean(pnl_list) if pnl_list else 0.0
     avg_conf = mean(conf_list) if conf_list else 0.0
 
-    # Rekomendacijos — konservatyvios, tik kaip gairės:
-    # jei vidutinis confidence stipriai > 0.7, didinam slenkstį; jei < 0.5 — mažinam
+    # Rekomendacijos
     suggested_conf_thr = 0.7
     if avg_conf >= 0.8:
         suggested_conf_thr = 0.75
     elif avg_conf <= 0.5:
         suggested_conf_thr = 0.6
 
-    # jei avg_pnl < 0, priveržti edge minimalų; jei > 0.2, galima atlaisvinti
     suggested_edge_min = 0.0015
-    if avg_pnl < 0.0:
-        suggested_edge_min = 0.0020
+    if avg_pnl < 0:
+        suggested_edge_min = 0.0025
     elif avg_pnl > 0.2:
         suggested_edge_min = 0.0010
 
-    logging.info(
-        "[AI-TUNER] Per paskutines %dd: trades=%d | win_rate=%.2f%% | avg_pnl=%.4f%% | avg_conf=%.3f",
-        days, total, win_rate, avg_pnl, avg_conf
-    )
-    logging.info(
-        "[AI-TUNER] Rekomendacijos: AI_CONFIDENCE_THRESHOLD≈%.2f | EDGE_MIN_PCT≈%.4f",
-        suggested_conf_thr, suggested_edge_min
-    )
-
-    # Jei ateityje norėsi, galime čia iš karto atnaujinti CONFIG per DB/ENV,
-    # bet dabar tik pateikiame gaires loguose (saugiau TEST režime).
+    logging.info(f"📊 Rezultatai: {total} sandoriai | WinRate: {win_rate:.2f}% | Avg. PnL: {avg_pnl:+.4f}% | Avg. Conf: {avg_conf:.3f}")
+    logging.info(f"💡 Rekomendacija (CONFIDENCE_THRESHOLD): ~{suggested_conf_thr:.2f}")
+    logging.info(f"💡 Rekomendacija (EDGE_MIN_PCT): ~{suggested_edge_min:.4f}")
+    logging.info("--- [AI-TUNER] Analizė baigta ---")

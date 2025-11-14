@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from core.db_manager import DB_PATH
 from core.exchange_adapter import get_adapter
-import ai.ai_learning as ai_learning
+# import ai.ai_learning as ai_learning  # ❌ PAŠALINTA: ciklinis importas
 
 class OrderExecutor:
     def __init__(self, exchange=None, daily_guard=None):
@@ -27,45 +27,54 @@ class OrderExecutor:
                    expected_edge_pct: float = 0.0,
                    ai_confidence: float = 0.0) -> dict:
         try:
+            # Gauti kainą
+            price = self.exchange.get_price(symbol)
+            if not price:
+                return {"ok": False, "error": f"Nepavyko gauti kainos {symbol}"}
+            
+            # Apskaičiuoti kiekį
+            qty = quote_amount / float(price)
+            
+            # Vykdyti pavedimą
             res = self.exchange.execute_market_order(
                 symbol=symbol,
                 side="BUY",
-                qty=quote_amount / float(self.exchange.get_price(symbol) or 1),
+                qty=qty,
                 reason="AI BUY",
                 confidence=ai_confidence,
             )
-            if not res:
-                raise ValueError("Nėra atsakymo iš execute_market_order")
+            
+            if not res or not res.get("ok", True):
+                error_msg = res.get("error", "Nežinoma klaida") if res else "Nėra atsakymo"
+                return {"ok": False, "error": error_msg}
 
             # Įrašome į DB lentelę positions
-            entry_price = float(res.get("fill_price") or 0)
-            qty = float(res.get("qty") or 0)
+            entry_price = float(res.get("fill_price", price))
+            executed_qty = float(res.get("qty", qty))
             opened_at = datetime.now(timezone.utc).isoformat()
-            conf = float(res.get("confidence") or 0.0)
 
-            # Pašaliname poziciją iš DB
             con = sqlite3.connect(DB_PATH)
             cur = con.cursor()
-            cur.execute("DELETE FROM positions WHERE symbol = ?;", (symbol,))
+            cur.execute("""
+                INSERT OR REPLACE INTO positions 
+                (symbol, entry_price, qty, opened_at, confidence, state)
+                VALUES (?, ?, ?, ?, ?, 'OPEN')
+            """, (symbol, entry_price, executed_qty, opened_at, ai_confidence))
             con.commit()
             con.close()
 
-            # Jei esame Paper Mode, atnaujiname paper sąskaitą per adapterį.
-            # Adapteris turi žinoti, ar jis yra "Paper" režime, kad būtų iškviesta teisinga funkcija.
-            if self.exchange.is_paper_mode():  # Pataisyta: Patikrinimas per adapterį
-                self.exchange.update_paper_account_on_sell(
-                    symbol=symbol,
-                    qty=qty,
-                    entry_price=entry_price,
-                    exit_price=sell_price,
-                    usdc_gain=usdc_gain,
-                )
-                
-            logging.info(f"[OrderExecutor] 🔴 SELL {symbol} {qty} @ {sell_price:.6f} | PnL={usdc_gain:+.2f}")
-            return {"ok": True, "symbol": symbol, "qty": qty, "price": sell_price, "usdc_gain": usdc_gain}
+            logging.info(f"[OrderExecutor] 🟢 BUY {symbol} {executed_qty} @ {entry_price:.6f} | {quote_amount:.2f} USDC")
+            return {
+                "ok": True, 
+                "symbol": symbol, 
+                "qty": executed_qty, 
+                "price": entry_price, 
+                "usdc_amount": quote_amount
+            }
 
         except Exception as e:
-            logging.exception(f"[OrderExecutor] Klaida market_sell {symbol}: {e}")
+            logging.exception(f"[OrderExecutor] Klaida market_buy {symbol}: {e}")
+            return {"ok": False, "error": str(e)}
 
     # ======================================================
     # 🔴 SELL
@@ -84,22 +93,46 @@ class OrderExecutor:
                 reason=reason,
                 confidence=ai_confidence,
             )
-            if not res:
-                raise ValueError("Nėra atsakymo iš execute_market_order")
+            
+            if not res or not res.get("ok", True):
+                error_msg = res.get("error", "Nežinoma klaida") if res else "Nėra atsakymo"
+                return {"ok": False, "error": error_msg}
 
-            sell_price = float(res.get("fill_price") or 0)
-            qty = float(res.get("qty") or base_qty)
-            usdc_gain = (sell_price - entry_price) * qty if entry_price and qty else 0.0
+            sell_price = float(res.get("fill_price", 0))
+            executed_qty = float(res.get("qty", base_qty))
+            usdc_gain = (sell_price - entry_price) * executed_qty if entry_price and executed_qty else 0.0
 
-            # Pašaliname poziciją iš DB
+            # Pašaliname poziciją iš DB arba pažymime kaip CLOSED
             con = sqlite3.connect(DB_PATH)
             cur = con.cursor()
+            
+            # Variantas 1: Ištriname poziciją
             cur.execute("DELETE FROM positions WHERE symbol = ?;", (symbol,))
+            
+            # Variantas 2: Arba pažymime kaip CLOSED (išsaugo istoriją)
+            # cur.execute("""
+            #     UPDATE positions SET state='CLOSED', closed_at=?, close_price=?, pnl_usdc=?
+            #     WHERE symbol=? AND state='OPEN'
+            # """, (datetime.now(timezone.utc).isoformat(), sell_price, usdc_gain, symbol))
+            
             con.commit()
             con.close()
 
-            logging.info(f"[OrderExecutor] 🔴 SELL {symbol} {qty} @ {sell_price:.6f} | PnL={usdc_gain:+.2f}")
-            return {"ok": True, "symbol": symbol, "qty": qty, "price": sell_price, "usdc_gain": usdc_gain}
+            # Atnaujiname paper account balansą
+            try:
+                from core.paper_account import update_balance_after_sell
+                update_balance_after_sell(symbol, executed_qty, entry_price, sell_price, usdc_gain)
+            except Exception as e:
+                logging.warning(f"[OrderExecutor] Nepavyko atnaujinti paper account: {e}")
+
+            logging.info(f"[OrderExecutor] 🔴 SELL {symbol} {executed_qty} @ {sell_price:.6f} | PnL={usdc_gain:+.2f} USDC")
+            return {
+                "ok": True, 
+                "symbol": symbol, 
+                "qty": executed_qty, 
+                "price": sell_price, 
+                "usdc_gain": usdc_gain
+            }
 
         except Exception as e:
             logging.exception(f"[OrderExecutor] Klaida market_sell {symbol}: {e}")

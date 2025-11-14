@@ -8,7 +8,7 @@
 import sqlite3
 import logging
 from datetime import datetime, timezone
-from core.db_manager import DB_PATH, fetch_risk_state, update_risk_state  # Importuojame ir risk_state pagalbininkus
+from core.db_manager import DB_PATH, fetch_risk_state, update_risk_state
 from core.config import CONFIG
 
 START_CAPITAL = 10_000.0  # testinės sąskaitos pradinis kapitalas
@@ -73,7 +73,6 @@ def get_state() -> dict:
         free_usdc = equity - used_usdc
 
         # Skaičiuojame PnL tik dienai (šis duomenys gaunamas iš daily guard)
-        # Naudojame risk_state lentelę, kur daily PnL (ar DD) yra saugomas
         risk_state = fetch_risk_state()
         dd_day_pct = float(risk_state.get('dd_day_pct', 0.0))
         
@@ -84,7 +83,7 @@ def get_state() -> dict:
             "used_usdc": used_usdc,
             "positions": positions,
             "open_positions": len(positions),
-            "daily_pnl_pct": dd_day_pct, # Grąžinama, kad būtų prieinama AISizer
+            "daily_pnl_pct": dd_day_pct,
             "timestamp": _now_iso(),
         }
     except Exception as e:
@@ -103,114 +102,23 @@ def get_state() -> dict:
 def update_balance_after_sell(symbol: str, qty: float, entry_price: float, exit_price: float, usdc_gain: float):
     """
     Atnaujina virtualios sąskaitos (Paper Account) balansą po pozicijos uždarymo.
-    Tai yra pakaitalas tikrai biržos sąskaitai, skirtas tik Paper Mode.
-    Iš esmės, prie turimų grynųjų (free_usdc) pridedamas gautas pelnas/nuostolis (usdc_gain).
+    Supaprastinta versija - tiesiog loginu PnL, nes balansas atnaujinamas per equity_tracker automatiškai.
     """
-    with _get_conn() as con:
-        cur = con.cursor()
-        
-        # Pelnas (arba nuostolis) įrašomas į equity_history lentelę.
-        # Nėra tiesioginės "balance" lentelės, todėl atnaujiname grynųjų USDC sumą.
-        # Šiuo atveju geriausia tiesiog atnaujinti paskutinį equity_history įrašą
-        # arba leisti equity_tracker'iui (kuris kviečia get_state()) teisingai apskaičiuoti
-        # sekančios iteracijos metu, jei PaperAccount yra atskirame faile.
-        
-        # Kadangi naudojama DB:
-        # 1. Pelnas jau yra *įskaičiuotas* į equity_history per OrderExecutor/ExitManager logiką,
-        #    kuri naudoja get_state(), kad apskaičiuotų equity.
-        # 2. Tikrų atidarytų pozicijų (DB positions) nebėra.
-        # Mums tereikia užtikrinti, kad ateityje grynųjų pinigų (free_usdc) apskaičiavimas
-        # būtų teisingas.
-
-        # Patikriname, ar šis sandoris jau nebuvo uždarytas ExitManager'io
-        # (tai yra apsauga, bet OrderExecutor.market_sell ištrina iš positions, o ExitManager.sell tik pažymi CLOSED).
-        
-        # Kadangi OrderExecutor (žingsnis 1) pašalina poziciją iš 'positions' ir jau žino PnL (usdc_gain),
-        # mums reikia atnaujinti grynųjų pinigų (free_usdc) sumą virtualioje sąskaitoje.
-        
-        # Paprastas būdas tai padaryti: įrašyti naują eilutę į risk_state lentelę
-        # arba atnaujinti balance per kitą globalų mechanizmą.
-        
-        # Pataisymas: atnaujiname virtualų 'balance_usdc' įrašą (panaudojus PaperAccount JSON failą
-        # anksčiau. Dabar turime naudoti DB).
-        
-        # Kadangi sistema veikia per equity_history ir get_state(), paprasčiausias veiksmas yra:
-        # Atnaujinti grynųjų pinigų (USDC) balansą.
-        
-        # Nustatykite grynųjų pinigų atnaujinimo logiką:
-        try:
-            # 1. Gauname dabartinę grynųjų USDC sumą iš paskutinio equity_history įrašo
-            last_equity_row = cur.execute("""
-                SELECT equity, free_usdc FROM equity_history ORDER BY ts DESC LIMIT 1
-            """).fetchone()
-
-            if last_equity_row:
-                old_equity = float(last_equity_row['equity'] or START_CAPITAL)
-                old_free_usdc = float(last_equity_row['free_usdc'] or START_CAPITAL)
-                
-                # Atnaujiname laisvą USDC sumą: pridedame gautą pelną/nuostolį.
-                # (Pozicijos dydis * įėjimo kaina) jau yra užimta suma. 
-                # Kadangi OrderExecutor apskaičiavo skirtumą (usdc_gain), 
-                # dabar grynųjų pinigų suma turėtų būti:
-                # senas_free_usdc + (qty * exit_price)
-                # BET: OrderExecutor apskaičiuoja PnL (usdc_gain), o likusi dalis jau grįžta
-                # per pozicijų ištrynimą.
-                
-                # Saugiausias būdas: EquityTracker'is kitos iteracijos metu automatiškai apskaičiuos naują būseną.
-                # Jei norime akimirksnio atnaujinimo, turime modifikuoti laisvą USDC sumą:
-
-                # Laisvi USDC prieš sandorį: old_free_usdc
-                # Uždaromo sandorio vertė (entry): qty * entry_price
-                # Uždaromo sandorio vertė (exit): qty * exit_price
-                
-                # Sandorio vertė grįžta į free_usdc: qty * entry_price
-                # Pelnas/nuostolis: usdc_gain
-                
-                # Pataisyta: Patikslinta, kad grąžintų visą sumą + PnL.
-                usdc_return = qty * exit_price # Bendra gauta suma (įskaitant pradinį kapitalą)
-                
-                new_free_usdc = old_free_usdc + usdc_return - (qty * entry_price) # grąžintas kapitalas + pelnas
-                
-                # Šis atnaujinimas yra sudėtingas DB-pagrindu veikiančioje sistemoje.
-                # Paprasčiau: leisti EquityTracker'iui apskaičiuoti per get_state(). 
-                # Jums reikėtų tik atnaujinti `paper_account.json` failą per `PaperAccount` modulį,
-                # jei `PaperAccount` palaiko balanso valdymą.
-                
-                # Kadangi PaperAccount.py neturi tiesioginės funkcijos atnaujinti free_usdc (tik grąžina būseną),
-                # bet OrderExecutor dabar tiesiogiai pašalino poziciją iš DB,
-                # tai reiškia, kad get_state() (iš core/paper_account.py) jau grąžins 
-                # didesnį 'free_usdc' ir mažesnį 'used_usdc', o equity bus teisingas kitos iteracijos metu.
-                
-                # Kviečiame 'update_paper_account_file' (jei naudojamas JSON failas)
-                PaperAccount.update_state_on_trade(
-                    symbol=symbol,
-                    action="SELL",
-                    entry_price=entry_price,
-                    exit_price=exit_price,
-                    pnl_pct=usdc_gain / (qty * entry_price) * 100 if entry_price > 0 else 0,
-                    pnl_usd=usdc_gain,
-                    confidence=0.0, # Nenaudojame confidence sell metu
-                    hold_time_h=0.0, # Laikas bus apskaičiuotas ExitManager
-                    market_state="paper"
-                )
-                
-                # Dėmesio: jei yra atnaujintas `ai/ai_learning.py` ir `update_state_on_trade`
-                # rašo į `paper_account.json`, tada toliau esantis kodas užtikrins, 
-                # kad equity_tracker atnaujintų DB.
-                logging.info(f"[PaperAccount] Atnaujintas Paper Account (JSON) po SELL {symbol}")
-            else:
-                logging.warning("[PaperAccount] Nepavyko rasti paskutinio equity įrašo. Balansas nebuvo atnaujintas.")
-
-        except Exception as e:
-            logging.error(f"[PaperAccount] Klaida atnaujinant Paper Account: {e}")
-            pass
+    try:
+        logging.info(f"[PaperAccount] 📊 SELL {symbol}: PnL = {usdc_gain:+.2f} USDC | Qty: {qty} @ {exit_price:.6f}")
+        # Balansas automatiškai atnaujinamas per equity_tracker.py ir get_state() funkciją
+        # Nereikia rankinio atnaujinimo, nes sistema veikia per DB
+    except Exception as e:
+        logging.error(f"[PaperAccount] Klaida atnaujinant balansą: {e}")
         
 def clear_closed_positions(older_than_days: int = 30):
     """Pašalina CLOSED pozicijas, senesnes nei N dienų, kad išvalytų DB."""
     try:
+        from datetime import timedelta  # ✅ PRIDĖTA: trūksta šio importo
+        
         con = _get_conn()
         cur = con.cursor()
-        threshold_iso = (datetime.now(timezone.utc) - timezone.timedelta(days=older_than_days)).isoformat()
+        threshold_iso = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
         
         cur.execute("DELETE FROM positions WHERE state='CLOSED' AND closed_at < ?", (threshold_iso,))
         count = cur.rowcount
@@ -257,7 +165,7 @@ def get_account_state():
 
         if row:
             return {
-                "balance_usdc": float(row["free_usdc"]), # Laisvi pinigai
+                "balance_usdc": float(row["free_usdc"]),
                 "positions": positions,
                 "equity": float(row["equity"]),
                 "free_usdc": float(row["free_usdc"]),
@@ -265,7 +173,6 @@ def get_account_state():
                 "timestamp": row["ts"]
             }
         else:
-            # Jei DB tuščia, grąžiname pradinę būseną
             logging.warning("[PaperAccount] Nepavyko gauti būsenos iš DB. Grąžinama pradinė būsena.")
             now = datetime.now(timezone.utc).isoformat()
             return {

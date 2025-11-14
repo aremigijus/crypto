@@ -1,101 +1,171 @@
+# core/db_manager.py
 # ============================================================
-# ai/ai_tuner.py — Dieninis AI parametrų "tuningas" (DB-only)
-# ------------------------------------------------------------
-# Skaito rezultatus iš DB (trades) ir pateikia rekomendacijas
-# (loguose). Nerašo į failus, nekeičia config tiesiogiai.
+# core/db_manager.py — Centrinis DB valdymas
+# Atnaujinta: 2025-11-13 (pašalintas ai_tuner kodas)
 # ============================================================
 
-from __future__ import annotations
+import os
+import json
 import sqlite3
-from datetime import datetime, timezone, timedelta
 import logging
-from statistics import mean
+from pathlib import Path
+from datetime import datetime, timezone
 
-from core.db_manager import DB_PATH  # <--- PAKEISTA: Importuojame tik is core.db_manager
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
 
+DB_PATH = DATA_DIR / "core.db"
 
-def _read_trades(days: int = 2):
-    """Paima paskutinių N dienų uždarytus sandorius iš DB."""
+def init_db():
+    """Užtikrina, kad DB ir lentelės egzistuoja."""
+    from core.db_init import init_full_db
+    init_full_db()
+
+def get_conn():
+    """Grąžina DB connection."""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def insert_trade(trade_data: dict):
+    """Įrašo sandorį į trades lentelę."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO trades 
+            (ts, event, symbol, price, qty, usd_value, pnl_pct, reason, hold_sec, confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            trade_data.get("ts"),
+            trade_data.get("event"),
+            trade_data.get("symbol"),
+            trade_data.get("price"),
+            trade_data.get("qty"),
+            trade_data.get("usd_value"),
+            trade_data.get("pnl_pct"),
+            trade_data.get("reason"),
+            trade_data.get("hold_sec"),
+            trade_data.get("confidence")
+        ))
+        conn.commit()
+
+def upsert_equity(equity_data: dict):
+    """Įrašo equity įrašą (UPSERT)."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR REPLACE INTO equity_history 
+            (ts, equity, day_pnl_pct, equity_pct_from_start, free_usdc, used_usdc, positions)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            equity_data.get("timestamp"),
+            equity_data.get("equity"),
+            equity_data.get("day_pnl_pct"),
+            equity_data.get("equity_pct_from_start"),
+            equity_data.get("free_usdc"),
+            equity_data.get("used_usdc"),
+            equity_data.get("positions")
+        ))
+        conn.commit()
+
+def fetch_risk_state() -> dict:
+    """Grąžina risk_state lentelės reikšmes."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        rows = cur.execute("SELECT key, value FROM risk_state").fetchall()
+        return {row['key']: row['value'] for row in rows}
+
+def update_risk_state(key: str, value: str):
+    """Atnaujina risk_state reikšmę."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR REPLACE INTO risk_state (key, value)
+            VALUES (?, ?)
+        """, (key, value))
+        conn.commit()
+
+# ✅ PRIDĖTOS TRŪKSTAMOS FUNKCIJOS dashboard/app.py
+
+def fetch_recent_trades(limit: int = 100):
+    """Grąžina paskutinius sandorius iš trades lentelės."""
     try:
-        con = sqlite3.connect(DB_PATH)
-        cur = con.cursor()
-        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-
-        rows = cur.execute(
-            """
-            SELECT ts, pnl_pct, confidence
-            FROM trades
-            WHERE ts >= ? AND event='CLOSE'
-            ORDER BY ts DESC
-            """,
-            (since,)
-        ).fetchall()
-        con.close()
-        return rows
+        with get_conn() as conn:
+            cur = conn.cursor()
+            rows = cur.execute("""
+                SELECT ts, event, symbol, price, qty, usd_value, pnl_pct, reason, confidence
+                FROM trades 
+                ORDER BY ts DESC 
+                LIMIT ?
+            """, (limit,)).fetchall()
+            return [dict(row) for row in rows]
     except Exception as e:
-        logging.error(f"[AI-TUNER] Klaida skaitant trades iš DB: {e}")
+        logging.error(f"[DB_MANAGER] Klaida gaunant sandorius: {e}")
         return []
 
+def fetch_equity_from_db():
+    """Grąžina paskutinį equity įrašą."""
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            row = cur.execute("""
+                SELECT ts, equity, day_pnl_pct, equity_pct_from_start, free_usdc, used_usdc, positions
+                FROM equity_history 
+                ORDER BY ts DESC 
+                LIMIT 1
+            """).fetchone()
+            if row:
+                return dict(row)
+            else:
+                return {
+                    "equity": 10000.0,
+                    "day_pnl_pct": 0.0,
+                    "equity_pct_from_start": 0.0,
+                    "free_usdc": 10000.0,
+                    "used_usdc": 0.0,
+                    "positions": 0
+                }
+    except Exception as e:
+        logging.error(f"[DB_MANAGER] Klaida gaunant equity: {e}")
+        return {"equity": 10000.0, "day_pnl_pct": 0.0}
 
-def run_ai_tuner_daily(days: int = 7):
-    """Apskaičiuoja metrikas ir logina patarimus."""
-    logging.info(f"--- [AI-TUNER] Kasdienė metrikų analizė (per {days}d.) ---")
-    rows = _read_trades(days=days)
-    if not rows:
-        logging.info("[AI-TUNER] Nėra pakankamai sandorių rekomendacijoms.")
-        return
+def fetch_open_positions_db():
+    """Grąžina atidarytas pozicijas iš positions lentelės."""
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            rows = cur.execute("""
+                SELECT symbol, entry_price, qty, opened_at, confidence
+                FROM positions 
+                WHERE state='OPEN' AND qty > 0
+            """).fetchall()
+            return [dict(row) for row in rows]
+    except Exception as e:
+        logging.error(f"[DB_MANAGER] Klaida gaunant pozicijas: {e}")
+        return []
 
-    pnl_list = [float(r[1] or 0.0) for r in rows]
-    conf_list = [float(r[2] or 0.0) for r in rows]
-    total = len(rows)
-    wins = sum(1 for p in pnl_list if p > 0)
-    win_rate = (wins * 100.0) / total if total > 0 else 0.0
-    avg_pnl = mean(pnl_list) if pnl_list else 0.0
-    avg_conf = mean(conf_list) if conf_list else 0.0
+def ensure_tables_exist():
+    """Užtikrina, kad visos reikalingos lentelės egzistuoja."""
+    init_db()  # Jau turime šią funkciją
 
-    # Rekomendacijos — konservatyvios, tik kaip gairės:
-    # jei vidutinis confidence stipriai > 0.7, didinam slenkstį; jei < 0.5 — mažinam
-    suggested_conf_thr = 0.7
-    if avg_conf >= 0.8:
-        suggested_conf_thr = 0.75
-    elif avg_conf <= 0.5:
-        suggested_conf_thr = 0.6
-
-    # jei avg_pnl < 0, priveržti edge minimalų; jei > 0.2, galima atlaisvinti
-    suggested_edge_min = 0.0015
-    if avg_pnl < 0:
-        suggested_edge_min = 0.0025
-    elif avg_pnl > 0.2:
-        suggested_edge_min = 0.0010
-
-    logging.info(f"📊 Rezultatai: {total} sandoriai | WinRate: {win_rate:.2f}% | Avg. PnL: {avg_pnl:+.4f}% | Avg. Conf: {avg_conf:.3f}")
-    logging.info(f"💡 Rekomendacija (CONFIDENCE_THRESHOLD): ~{suggested_conf_thr:.2f} (dabar: ?) ")
-    logging.info(f"💡 Rekomendacija (EDGE_MIN_PCT): ~{suggested_edge_min:.4f} (dabar: ?) ")
-    logging.info("--- [AI-TUNER] Analizė baigta ---")
-
-    def backfill_from_files():
-    """Vienkartinis backfill iš JSON failų į DB (idempotentiška). Dabar tik trades."""
-    # Čia turite užtikrinti, kad aukščiau apibrėžtos funkcijos (_iter_jsonl, _load_json, init_db, insert_trade) yra prieinamos
-    # Pilnas backfill turėtų būti atliekamas per init_db_full.py. 
-    # Ši funkcija skirta tik likusiems trades logams.
-
-    init_db()
-
-    # trades
-    for t in _iter_jsonl(TRADE_LOG):
-        insert_trade({
-            "ts": t.get("ts") or t.get("timestamp"),
-            "event": t.get("event"),
-            "symbol": t.get("symbol"),
-            "price": t.get("price"),
-            "qty": t.get("qty"),
-            "usd_value": t.get("usd_value"),
-            "pnl_pct": t.get("pnl_pct"),
-            "reason": t.get("reason"),
-            "hold_sec": t.get("hold_sec"),
-            "confidence": t.get("confidence"),
-        })
-
-    # equity - PAŠALINTA. Equity rašomas tiesiogiai per equity_tracker.py, o pradinis įrašas
-    # turi būti atliktas per db_init.py.
-    pass # <--- PAKEISTA: Pašalintas equity backfill iš JSON
+def reset_test_mode_state():
+    """Išvalo testinius duomenis (paprasta versija)."""
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # Išvalome pozicijas
+            cur.execute("DELETE FROM positions")
+            # Atstatome pradinį kapitalą
+            cur.execute("DELETE FROM equity_history")
+            cur.execute("""
+                INSERT INTO equity_history 
+                (ts, equity, day_pnl_pct, equity_pct_from_start, free_usdc, used_usdc, positions)
+                VALUES (?, 10000, 0, 0, 10000, 0, 0)
+            """, (datetime.now(timezone.utc).isoformat(),))
+            conn.commit()
+            logging.info("[DB_MANAGER] Testinis reset atliktas")
+    except Exception as e:
+        logging.error(f"[DB_MANAGER] Klaida atliekant reset: {e}")
+        

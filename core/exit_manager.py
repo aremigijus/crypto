@@ -51,26 +51,51 @@ class ExitManager:
                     entry_ts = now
                 held_for_sec = now - entry_ts
 
-                # --- kaina
+                # --- kaina (su apsauga nuo None)
                 try:
-                    current_price = prices.get(symbol, {}).get("price") if prices else self.adapter.get_price(symbol)
-                except Exception:
-                    current_price = entry_price
+                    if prices and symbol in prices:
+                        price_data = prices.get(symbol, {})
+                        current_price = price_data.get("price") if isinstance(price_data, dict) else price_data
+                    else:
+                        current_price = self.adapter.get_price(symbol)
+                    
+                    # ✅ PRIDĖTA: Apsauga nuo None ir neteisingų reikšmių
+                    if current_price is None or current_price <= 0:
+                        logging.debug(f"[ExitManager] Nepavyko gauti kainos {symbol}, praleidžiama")
+                        continue
+                        
+                except Exception as e:
+                    logging.debug(f"[ExitManager] Klaida gaunant kainą {symbol}: {e}")
+                    continue
 
-                # --- PnL
-                pnl_pct = ((current_price / entry_price) - 1) * 100 if entry_price else 0.0
-                pnl_usdc = (current_price - entry_price) * qty if entry_price else 0.0
+                # --- PnL (su apsauga nuo None ir 0)
+                try:
+                    if entry_price and current_price and entry_price > 0:
+                        pnl_pct = ((current_price / entry_price) - 1) * 100
+                        pnl_usdc = (current_price - entry_price) * qty
+                    else:
+                        pnl_pct = 0.0
+                        pnl_usdc = 0.0
+                        logging.debug(f"[ExitManager] Neteisingi duomenys {symbol}: entry={entry_price}, current={current_price}")
+                        continue
+                except Exception as e:
+                    logging.debug(f"[ExitManager] Klaida skaičiuojant PnL {symbol}: {e}")
+                    continue
 
                 # --- Paprastos demo sąlygos
+                close_reason = None
                 if pnl_pct <= -3.0:
-                    self._close_position(symbol, current_price, pnl_pct, pnl_usdc, "Stop Loss (-3%)")
-                    closed_count += 1
+                    close_reason = "Stop Loss (-3%)"
                 elif pnl_pct >= 5.0:
-                    self._close_position(symbol, current_price, pnl_pct, pnl_usdc, "Take Profit (+5%)")
-                    closed_count += 1
-                elif held_for_sec > 86400:
-                    self._close_position(symbol, current_price, pnl_pct, pnl_usdc, "Laikymo limitas 24h")
-                    closed_count += 1
+                    close_reason = "Take Profit (+5%)"
+                elif held_for_sec > 86400:  # 24 valandos
+                    close_reason = "Laikymo limitas 24h"
+
+                if close_reason:
+                    success = self._close_position(symbol, current_price, pnl_pct, pnl_usdc, close_reason)
+                    if success:
+                        closed_count += 1
+                        logging.info(f"[ExitManager] {symbol} uždaryta ({close_reason}) | PnL={pnl_pct:.2f}% | {pnl_usdc:+.2f} USDC")
 
             return closed_count
 
@@ -85,7 +110,7 @@ class ExitManager:
             con = sqlite3.connect(DB_PATH)
             cur = con.cursor()
 
-            # pažymime kaip uždarytą
+            # Pažymime kaip uždarytą
             cur.execute("""
                 UPDATE positions
                 SET state='CLOSED', closed_at=?, close_price=?, pnl_pct=?, pnl_usdc=?, close_reason=?
@@ -99,7 +124,7 @@ class ExitManager:
                 symbol
             ))
 
-            # įrašome į trades istoriją
+            # Įrašome į trades istoriją
             cur.execute("""
                 INSERT INTO trades (ts, event, symbol, price, qty, usd_value, pnl_pct, reason)
                 SELECT ?, 'CLOSE', symbol, ?, qty, qty * ?, ?, ?
@@ -116,10 +141,9 @@ class ExitManager:
             con.commit()
             con.close()
 
-            logging.info(
-                f"[ExitManager] {symbol} uždaryta ({reason}) | "
-                f"PnL={pnl_pct:.2f}% | {pnl_usdc:.2f} USDC"
-            )
+            logging.info(f"[ExitManager] {symbol} uždaryta ({reason}) | PnL={pnl_pct:.2f}% | {pnl_usdc:+.2f} USDC")
+            return True
 
         except Exception as e:
             logging.exception(f"[ExitManager] Klaida _close_position({symbol}): {e}")
+            return False

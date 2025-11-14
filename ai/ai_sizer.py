@@ -13,7 +13,8 @@ import logging
 import statistics
 from pathlib import Path
 from core.config import CONFIG
-from ai.ai_sizer_summary import get_ai_sizer_summary
+# ✅ PATAISYTA: Keičiamas importas iš ai.ai_sizer_summary į core.ai_sizer_summary
+from core.ai_sizer_summary import get_ai_sizer_summary
 
 class SizerConfig:
     def __init__(self,
@@ -57,7 +58,8 @@ class SizerConfig:
 
 class AISizer:
     def __init__(self, config=None):
-        self.cfg = SizerConfig.from_config(config or CONFIG.all())
+        # ✅ PATAISYTA: Naudoti CONFIG tiesiogiai, ne .all()
+        self.cfg = SizerConfig.from_config(config or CONFIG)
         logging.info("[AISizer] Inicializuotas dinaminis pozicijos dydžio modulis")
 
     def _scale_by_confidence(self, conf: float) -> float:
@@ -127,13 +129,12 @@ class AISizer:
             logging.exception(f"[AISizer] quote_for_signal() klaida: {e}")
             return 0.0
 
-    # ========================================================\
+    # ========================================================
     # 🧠 Papildoma: Boost / Volatility vidurkių analizė (DB-Only)
-    # ========================================================\
+    # ========================================================
     def get_ai_metrics_summary(self):
         """Grąžina AI metrikų santrauką iš DB per ai_sizer_summary modulį."""
         try:
-            # Anksčiau naudojo ai_metrics.json. Dabar naudojame bendrą santrauką iš DB.
             summary = get_ai_sizer_summary()
             return {
                 "boost_avg": summary.get("boost_avg", 0.0),
@@ -142,3 +143,4 @@ class AISizer:
         except Exception as e:
             logging.exception(f"[AISizer] Klaida skaitant AI metrikas: {e}")
             return {"boost_avg": 0.0, "vol_avg": 0.0}
+        

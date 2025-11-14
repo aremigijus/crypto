@@ -8,19 +8,16 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template
 from threading import RLock
 
-from core.config import CONFIG, load_config, save_config
+from core.config import CONFIG
 from core.db_manager import (
     DB_PATH,
-    reset_test_mode_state,
     fetch_recent_trades,
-    fetch_equity_from_db,
-    fetch_open_positions_db,
     ensure_tables_exist,
 )
 from ai.ai_sizer import AISizer
 from ai.ai_performance import get_ai_performance
 from core.ws_bridge import get_price
-from core.paper_account import get_account_state
+from core.paper_account import get_account_state, get_open_positions
 
 app = Flask(__name__)
 
@@ -56,22 +53,27 @@ def compat_page():
 
 @app.route("/api/summary")
 def api_summary():
-    eq = fetch_equity_from_db()
-    perf = get_ai_performance()
     acc = get_account_state()
+    perf = get_ai_performance().get_summary()  # ✅ PATAISYTA: pridėti .get_summary()
 
-    balance = acc.get("balance", 0)
-    total_equity = balance + eq.get("unrealized_pnl", 0)
+    balance = acc.get("balance_usdc", 0)
+    total_equity = acc.get("equity", balance)
+    free_usdc = acc.get("free_usdc", 0)
+    used_usdc = acc.get("used_usdc", 0)
+    
+    # PnL skaičiavimas
+    start_balance = 10000.0  # Pradinis balansas
     pnl_pct = 0
-    if acc.get("start_balance", 0) > 0:
-        pnl_pct = round(((total_equity - acc["start_balance"]) /
-                         acc["start_balance"]) * 100, 3)
+    if start_balance > 0:
+        pnl_pct = round(((total_equity - start_balance) / start_balance) * 100, 3)
 
     return jsonify({
         "balance": balance,
         "equity": total_equity,
+        "free_usdc": free_usdc,
+        "used_usdc": used_usdc,
         "pnl_pct": pnl_pct,
-        "open_positions": len(fetch_open_positions_db()),
+        "open_positions": acc.get("open_positions", 0),
         "ai_win_rate": perf.get("win_rate", 0),
         "ai_trades": perf.get("total_trades", 0),
         "ai_profit_usdc": perf.get("profit_usdc", 0)
@@ -80,44 +82,61 @@ def api_summary():
 
 @app.route("/api/open_positions")
 def api_open_positions():
-    pos = fetch_open_positions_db()
+    positions = get_open_positions()
     out = []
-    for p in pos:
-        sym = p["symbol"]
-        price = get_price(sym)
-        if price is None:
-            price = p["entry_price"]
+    
+    for symbol, pos in positions.items():
+        current_price = get_price(symbol)
+        if current_price is None:
+            current_price = pos["entry_price"]
 
+        pnl = (current_price - pos["entry_price"]) * pos["qty"]
+        
         out.append({
-            "symbol": sym,
-            "qty": p["qty"],
-            "entry_price": p["entry_price"],
-            "current_price": price,
-            "pnl": round((price - p["entry_price"]) * p["qty"], 6)
+            "symbol": symbol,
+            "qty": pos["qty"],
+            "entry_price": pos["entry_price"],
+            "current_price": current_price,
+            "pnl": round(pnl, 6),
+            "confidence": pos.get("confidence", 0)
         })
     return jsonify(out)
 
 
 @app.route("/api/live_positions")
 def api_live_positions():
-    pos = fetch_open_positions_db()
-    return jsonify(pos)
+    positions = get_open_positions()
+    return jsonify(positions)
 
 
 @app.route("/api/ai_summary")
 def api_ai_summary():
-    return jsonify(get_ai_performance())
+    return jsonify(get_ai_performance().get_summary())  # ✅ PATAISYTA: pridėti .get_summary()
 
 
 @app.route("/api/ai_performance")
 def api_ai_performance():
-    return jsonify(get_ai_performance())
+    return jsonify(get_ai_performance().get_summary())  # ✅ PATAISYTA: pridėti .get_summary()
 
 
 @app.route("/api/ai_sizer")
 def api_ai_sizer():
-    s = AISizer()
-    return jsonify(s.get_summary())
+    # ✅ PATAISYTA: Naudoti core.ai_sizer_summary vietoj AISizer.get_summary()
+    try:
+        from core.ai_sizer_summary import get_ai_sizer_summary
+        summary = get_ai_sizer_summary()
+        return jsonify(summary)
+    except Exception as e:
+        logging.error(f"[DASHBOARD] Klaida /api/ai_sizer: {e}")
+        return jsonify({
+            "boost_avg": 0.0,
+            "vol_avg": 0.0,
+            "min_trade_usdc": 25.0,
+            "max_trade_usdc": 500.0,
+            "max_positions": 8,
+            "open_positions": 0,
+            "portfolio_usage_pct": 0.0
+        })
 
 
 @app.route("/api/ai_metrics")
@@ -135,17 +154,24 @@ def api_runtime():
 
 @app.route("/api/risk_summary")
 def api_risk_summary():
-    eq = fetch_equity_from_db()
     acc = get_account_state()
-    balance = acc.get("balance", 0)
-    current_dd = eq.get("drawdown_pct", 0)
-    max_dd = CONFIG.get("RISK_MAX_DRAWDOWN_PCT", 25)
+    balance = acc.get("balance_usdc", 0)
+    equity = acc.get("equity", balance)
+    
+    # Paprastas drawdown skaičiavimas
+    start_balance = 10000.0
+    current_dd = 0
+    if start_balance > 0:
+        current_dd = ((equity - start_balance) / start_balance) * 100
+    
+    max_dd = CONFIG.get("DAILY_MAX_DRAWDOWN_PCT", 2.0)
 
     return jsonify({
         "balance": balance,
-        "drawdown_pct": current_dd,
+        "equity": equity,
+        "drawdown_pct": round(current_dd, 2),
         "drawdown_limit_pct": max_dd,
-        "state": "OK" if current_dd < max_dd else "STOP"
+        "state": "OK" if current_dd > -max_dd else "STOP"
     })
 
 
@@ -174,9 +200,17 @@ def api_check_matrix():
 def api_save_config():
     data = request.json
     with _state_lock:
+        # Atnaujinti CONFIG
         for k, v in data.items():
             CONFIG[k] = v
-        save_config(CONFIG)
+        
+        # Išsaugoti config.json
+        try:
+            CONFIG_PATH.write_text(json.dumps(CONFIG, indent=2), encoding="utf-8")
+        except Exception as e:
+            logging.error(f"Klaida išsaugant config: {e}")
+            return jsonify({"status": "error", "msg": str(e)})
+            
     return jsonify({"status": "ok"})
 
 
@@ -187,10 +221,15 @@ def api_get_config():
 
 @app.route("/api/test_reset", methods=["POST"])
 def api_test_reset():
-    reset_test_mode_state()
-    return jsonify({"status": "reset"})
+    try:
+        from core.db_init import init_full_db
+        init_full_db(force_recreate=True)
+        return jsonify({"status": "reset"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)})
 
 
 if __name__ == "__main__":
     ensure_tables_exist()
     app.run(host="0.0.0.0", port=5000, debug=False)
+    

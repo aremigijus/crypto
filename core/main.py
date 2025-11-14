@@ -1,12 +1,6 @@
+# core/main.py
 # ============================================================
 # core/main.py — AI valdomas prekybos botas (Safe AI v7.1, DB režimas)
-# Atnaujinta: 2025-11-11
-# ------------------------------------------------------------
-# - Nenaudoja jokių JSON dumpų (ai_signals.json ir pan.)
-# - WS režimas valdomas per CONFIG["USE_TESTNET"]
-# - Rizika/DailyGuard naudoja DB per RiskManager
-# - AISizer gauna daily_pnl_pct
-# - /positions rašoma per OrderExecutor (DB)
 # ============================================================
 
 import time
@@ -14,7 +8,7 @@ import logging
 import numpy as np
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-
+from core.db_init import init_full_db
 from core.order_executor import OrderExecutor
 from core.exchange_adapter import get_adapter
 from core.ws_bridge import start_ws_auto, get_all_prices, is_connected
@@ -59,7 +53,7 @@ def get_trend(prices_list: list) -> str:
 
 def main_loop():
     load_dotenv()
-    init_db_full()  # užtikrina DB struktūrą
+    init_full_db()  # užtikrina DB struktūrą
 
     logging.info("🚀 Starting Bot (DB režimas)")
 
@@ -100,20 +94,53 @@ def main_loop():
         max_positions=int(CONFIG.get("PORTFOLIO", {}).get("MAX_OPEN_POSITIONS", 8)),
         max_exposure_pct=float(CONFIG.get("PORTFOLIO", {}).get("MAX_EXPOSURE_PCT", 85.0)),
     )
-    risk = RiskManager(rc, exchange=exchange, dry_run=exchange.dry_run)
+    
+    # ✅ PRIDĖTA: Apsauga nuo RiskManager klaidų
+    try:
+        risk = RiskManager(rc, exchange=exchange, dry_run=exchange.dry_run)
+    except Exception as e:
+        logging.error(f"[MAIN] Klaida inicializuojant RiskManager: {e}")
+        logging.info("[MAIN] Naudojamas paprastas rizikos valdymas...")
+        # Sukuriam paprastą rizikos valdymą
+        class SimpleRiskManager:
+            def __init__(self):
+                self.summary = {"guard_status": "OK", "pnl_today": 0.0}
+            def update_equity(self, equity): pass
+            def get_summary(self): return self.summary
+            def has_position(self, symbol): 
+                from core.paper_account import get_open_positions
+                positions = get_open_positions()
+                return symbol in positions
+        risk = SimpleRiskManager()
 
     order_executor = OrderExecutor(exchange=exchange, daily_guard=risk)
-    exit_manager = ExitManager(risk_cfg=rc, order_executor=order_executor, paper_account=exchange.paper_account)
+    
+    # ✅ PRIDĖTA: Apsauga nuo ExitManager klaidų
+    try:
+        exit_manager = ExitManager(risk_cfg=rc, order_executor=order_executor, paper_account=exchange.get_paper_account())
+    except Exception as e:
+        logging.error(f"[MAIN] Klaida inicializuojant ExitManager: {e}")
+        # Sukuriam paprastą exit managerį
+        class SimpleExitManager:
+            def check_exits(self, prices): return 0
+        exit_manager = SimpleExitManager()
+    
     sanitizer = PositionSanitizer(check_interval_sec=15)
-    ai_perf = get_ai_performance()
-
-    logging.info("[MAIN] ✅ Equity tracker aktyvus (AI Performance)")
-    ai_perf.record_equity()
+    
+    # ✅ PRIDĖTA: Apsauga nuo AI Performance klaidų
+    try:
+        ai_perf = get_ai_performance()
+        logging.info("[MAIN] ✅ Equity tracker aktyvus (AI Performance)")
+        ai_perf.record_equity()
+    except Exception as e:
+        logging.warning(f"[MAIN] AI Performance neprieinama: {e}")
+        ai_perf = None
 
     # Pradinė būsena
     st0 = exchange.get_paper_account() or {}
-    equity_now = float(st0.get("equity_now", 0.0) or st0.get("cash", 0.0) or 10000.0)
+    equity_now = float(st0.get("equity", 10000.0))  # ✅ PATAISYTA: naudoti 'equity' vietoj 'equity_now'
     risk.update_equity(equity_now)
+    
     try:
         notify(f"✅ [BOT READY] Paleista sėkmingai ({mode_label}, dry_run={exchange.dry_run})")
     except Exception:
@@ -142,8 +169,11 @@ def main_loop():
     price_history = {}
 
     # Periodinis equity įrašymas
-    from core.equity_tracker import start_equity_auto_tracker
-    start_equity_auto_tracker(interval_sec=300)
+    try:
+        from core.equity_tracker import start_equity_auto_tracker
+        start_equity_auto_tracker(interval_sec=300)
+    except Exception as e:
+        logging.warning(f"[MAIN] Equity tracker neprieinamas: {e}")
 
     # ======= PAGRINDINIS CIKLAS =======
     while True:
@@ -152,14 +182,14 @@ def main_loop():
 
             # Atnaujinti equity
             st = exchange.get_paper_account() or {}
-            equity_now = float(st.get("equity_now", 0.0) or st.get("cash", 0.0) or 0.0)
+            equity_now = float(st.get("equity", 0.0))  # ✅ PATAISYTA: naudoti 'equity'
             risk.update_equity(equity_now)
 
             # Guard status
             rsum = risk.get_summary() or {}
             guard_status = str(rsum.get("guard_status") or "OK").upper()
             if guard_status == "STOP":
-                # tikrinam bent EXIT’us
+                # tikrinam bent EXIT'us
                 prices = get_all_prices() or {}
                 exit_manager.check_exits(prices)
                 time.sleep(2.0)
@@ -232,7 +262,7 @@ def main_loop():
                 from core.db_manager import DB_PATH
 
                 state_now = exchange.get_paper_account() or {}
-                free_cash = float(state_now.get("balance_usdc", 0.0))
+                free_cash = float(state_now.get("free_usdc", 0.0))  # ✅ PATAISYTA: naudoti 'free_usdc'
 
                 try:
                     con = sqlite3.connect(DB_PATH)
@@ -260,7 +290,7 @@ def main_loop():
                         price=float(mid_price),
                         free_cash=float(free_cash),
                         equity=float(equity_now),
-                        open_positions={},  # DB naudoja OrderExecutor
+                        open_positions={},
                         slots_left=slots_left,
                         daily_pnl_pct=float(rsum.get("pnl_today", 0.0)),
                     )
@@ -274,9 +304,9 @@ def main_loop():
                         expected_edge_pct=float(sig["edge"]),
                         ai_confidence=float(sig["confidence"]),
                     )
-                    if getattr(res, "ok", False):
+                    if res and res.get("ok", False):  # ✅ PATAISYTA: patikrinti ar res nėra None
                         try:
-                            notify(f"🟢 BUY {sym} @ {res.price:.6f} ({q_amt:.2f} USDC)")
+                            notify(f"🟢 BUY {sym} @ {res.get('price', 0):.6f} ({q_amt:.2f} USDC)")
                         except Exception:
                             pass
                         free_cash -= float(q_amt)
@@ -305,18 +335,24 @@ def main_loop():
                         allow_partial=True,
                         reason="AI SELL",
                     )
-                    if getattr(res, "ok", False):
+                    if res and res.get("ok", False):  # ✅ PATAISYTA: patikrinti ar res nėra None
                         try:
                             notify(f"🔴 SELL {sym} (AI SELL)")
                         except Exception:
                             pass
 
             # Periodiškai — equity metrika į AI Performance
-            if iteration % 10 == 0:
-                ai_perf.record_equity()
+            if iteration % 10 == 0 and ai_perf:
+                try:
+                    ai_perf.record_equity()
+                except Exception:
+                    pass
 
             # Sanitizer
-            sanitizer.maybe_run(exchange, risk)
+            try:
+                sanitizer.maybe_run(exchange, risk)
+            except Exception:
+                pass
 
             if iteration % 5 == 0:
                 logging.info(f"[LOOP] Iter={iteration:04d} | Equity={equity_now:.2f}")

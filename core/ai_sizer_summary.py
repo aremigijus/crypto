@@ -1,3 +1,4 @@
+# core/ai_sizer_summary.py
 # ============================================================
 # core/ai_sizer_summary.py — AI dydžio ir portfelio santrauka
 # ------------------------------------------------------------
@@ -17,7 +18,8 @@ def get_ai_sizer_summary() -> dict:
     Naudojama dashboard'e kortelei "🧠 AI Dydis / Boost".
     """
     try:
-        cfg = CONFIG.all()
+        # ✅ PATAISYTA: Naudoti CONFIG tiesiogiai, ne .all()
+        cfg = CONFIG  # buvo: cfg = CONFIG.all()
         state = get_state()
 
         # 1️⃣ Config parametrai

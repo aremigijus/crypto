@@ -144,6 +144,36 @@ def insert_initial_rows():
     conn.close()
     logging.info("✅ Pradiniai duomenys įrašyti.")
 
+def update_ai_metrics_table():
+    """Atnaujina ai_metrics lentelę su reikiamais stulpeliais."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        
+        # Tikriname ar yra confidence stulpelis
+        cur.execute("PRAGMA table_info(ai_metrics)")
+        columns = [col[1] for col in cur.fetchall()]
+        
+        if 'confidence' not in columns:
+            # Sukuriame naują lentelę su visais reikalingais stulpeliais
+            cur.execute("DROP TABLE IF EXISTS ai_metrics")
+            cur.execute("""
+                CREATE TABLE ai_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT,
+                    symbol TEXT,
+                    confidence REAL,
+                    edge REAL,
+                    pnl_usdc REAL,
+                    hold_sec REAL
+                )
+            """)
+            conn.commit()
+            logging.info("[DB_INIT] ai_metrics lentelė atnaujinta")
+        
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB_INIT] Klaida atnaujinant ai_metrics: {e}")
 
 # ============================================================
 # Vykdymas

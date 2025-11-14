@@ -41,15 +41,10 @@ class AIPerformance:
     def __init__(self):
         _ensure_table()
 
-    # ... (likusi dalis be pakeitimų)
-    # ... record_equity, get_summary ...
-    
     def record_equity(self):
-        # Šiai funkcijai reikia importuoti logiką iš 'core.equity_tracker' arba 'core.paper_account', 
-        # bet atsižvelgiant į jau esančią struktūrą, paliekamas tuščias implementacijos pavyzdys, jei ji buvo perkelta į kitą vietą.
+        """Įrašo equity metriką (dabar atliekama per equity_tracker)."""
         # Tikrasis įrašymas vyksta equity_tracker.py
         pass
-
 
     def get_summary(self) -> dict:
         """Grąžina AI veiklos metrikų suvestinę (nuo starto)."""
@@ -57,10 +52,10 @@ class AIPerformance:
             conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
 
-            # Skaičiuoja vidutinį PnL tik iš uždarytų (SELL) sandorių
+            # ✅ PATAISYTA: Naudoti rowid vietoj id
             cur.execute("""
                 SELECT
-                    COUNT(id),
+                    COUNT(rowid),
                     SUM(CASE WHEN pnl_usdc > 0 THEN 1 ELSE 0 END),
                     AVG(confidence),
                     AVG(edge),
@@ -102,3 +97,9 @@ class AIPerformance:
                 "avg_edge": 0,
                 "profit_usdc": 0,
             }
+
+
+# ✅ PRIDĖTA: Globali funkcija, kurią importuoja main.py ir dashboard/app.py
+def get_ai_performance():
+    """Grąžina AIPerformance objektą (suderinamumas su senu kodu)."""
+    return AIPerformance()
